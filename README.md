@@ -1,56 +1,107 @@
 # Club Insights
 
-A small Reclub dashboard that helps a club host answer three questions: how many people booked a place, how many sessions actually ran, and what the attendance records tell us about no-shows. Open any metric to see the records behind it. The comparison stays next to the current value, so a host does not have to remember numbers from another screen.
+A dashboard for club hosts to explore participation, completed sessions and recorded no-shows. Built for the Reclub fullstack prototype brief: **Next.js + TypeScript**, a shared **JSON API**, and **SQLite** seeded from the supplied CSV files.
 
-## Run locally
+## Quick start
 
-Use Node.js 24 LTS. If you use nvm, run `nvm use` first.
+**Requirements:** Node.js 24 or newer and npm. With nvm:
 
 ```sh
+nvm install
+nvm use
 npm ci
 npm run dev
 ```
 
-Open [localhost:3000](http://localhost:3000). The dev command seeds a local SQLite database from the supplied CSVs before starting Next.js. No external service, account, or API key is needed.
+Open **http://localhost:3000**. After installation, `npm run dev` is the single command needed to seed the database and start the app. No account, API key or external database is required.
 
-The default view compares the last four completed local weeks, September 7–October 4, with the four before them. Pick different dates to inspect another period, or switch to Thảo Điền Tennis Club to see what a host sees before their club has activity.
+> **Seed note:** `npm run dev` and `npm start` both replace the database contents with the CSV fixtures on every start. Do not point `CLUB_DB_PATH` at a database containing data you want to keep. The default database is `data/club-insights.sqlite` and is not committed.
 
-## What the numbers mean
-
-| Metric | Rule | Why |
-| --- | --- | --- |
-| Active players | Distinct players with at least one non-cancelled booking for a held session in the selected range. | Bookings are available even when a host has not recorded attendance. This counts players who booked, not players confirmed to have turned up. |
-| Sessions held | Non-cancelled sessions that had finished by the fixed demo clock. A session belongs to the local date on which it started. | The export labels completed sessions as scheduled too, so a status filter alone would count future sessions. Using the end time also keeps sessions in progress out of the total. |
-| Recorded no-shows | Non-cancelled bookings explicitly marked absent at held sessions with recorded attendance. | Missing attendance is not evidence that everyone showed up. With no records the value is unknown. With incomplete coverage, we show the observed count and coverage without implying a reliable trend. |
-
-Date filters include both selected dates. The previous period is the same number of local calendar days, ending the day before the selected start. The weekly chart counts held sessions, starts weeks on Monday in the club's time zone, and follows the selected date range. Source timestamps are UTC; the demo clock is **October 5, 2026, 09:00 in Ho Chi Minh City**. We never use the reviewer's current date to decide whether a session has happened.
-
-A real example from the CSVs: September 28–October 4 had five held sessions and two recorded no-shows, but attendance was recorded for only two sessions. The right conclusion is “two recorded, partial coverage,” not “only two people missed a session that week.”
-
-## How it fits together
-
-```text
-Supplied CSVs → seed script → SQLite → Next.js JSON routes → dashboard
-```
-
-- `GET /api/clubs` lists the two clubs. No authentication is needed for this exercise.
-- `GET /api/insights?clubId=club-001&from=2026-09-07&to=2026-10-04` returns the two periods, metric values, attendance coverage, weekly buckets, and current-period drill-down rows. Mobile can consume the same JSON without reimplementing the metric rules.
-- The prototype returns drill-down rows with the summary because the fixture is small. This keeps filtering and opening the details simple and ensures a card and its details agree. No extra server or caching layer is needed here.
-- Motion is limited to state and chart transitions. The layout and interactions work without animation, and the dashboard respects the browser’s reduced-motion setting.
-
-## Checks
+For a production-mode local run:
 
 ```sh
-npm run lint
-npm run typecheck
-npm test
 npm run build
-npx playwright install chromium
-npm run test:e2e
+npm start
 ```
 
-The highest-risk regression is confusing missing attendance with a verified zero. The data suite checks both against the supplied fixture, along with the exact snapshot boundary, local week conversion, prior-period comparison, excluded sessions and bookings, and the empty club. The browser suite exercises the key host flows on laptop and phone viewports.
+## Using the dashboard
 
-## What I'd do next
+1. Select a club in the switcher. The second club, Thảo Điền Tennis Club, demonstrates the new-club empty state.
+2. Choose a preset or enter a start and end date and select **Apply**. Dates are inclusive. The previous period has the same number of calendar days and ends the day before the selected start.
+3. Select a metric to inspect its underlying players, sessions or recorded absences. The detail table is paginated.
+4. Read the weekly sessions chart and attendance coverage alongside the metrics. Weeks run Monday–Sunday in the club's time zone; a partial first or last week contains only dates within the selected range.
 
-I'd sit with a few hosts and check that the booking-based definition of active players is the one they need. Then I'd work on improving how attendance is captured before adding no-show comparisons. For a larger dataset I'd page the detail lists, add club-scoped access control, and profile the queries with representative traffic before choosing indexes or caching.
+The default period is **7 September–4 October 2026**, compared with **10 August–6 September 2026**. The data is a fixed snapshot, not live data: “now” is **5 October 2026, 09:00 in Ho Chi Minh City** (02:00 UTC). The UI prevents selecting a date after the snapshot.
+
+## Metric definitions and decisions
+
+| Metric | Definition | Interpretation |
+| --- | --- | --- |
+| Active players | Distinct players with a non-cancelled booking for a held session starting in the selected local dates. | This measures bookings, not confirmed attendance. |
+| Sessions held | Non-cancelled sessions starting in the selected local dates and finished by the snapshot. | Sessions in progress, future sessions and cancelled sessions are excluded. |
+| Recorded no-shows | Non-cancelled bookings explicitly marked absent at held sessions where attendance was recorded. | An unrecorded session is **unknown**, not zero. Partial coverage is labelled and comparisons are not presented as reliable trends. |
+
+The CSV timestamps are UTC; dates and week boundaries are interpreted in the club's time zone. If a recorded session contains a booking with unknown attendance, no-show coverage is also partial. For example, 28 September–4 October has five held sessions and two recorded no-shows, but attendance was recorded for only two sessions. This does not establish the total number of absences.
+
+These are prototype definitions where the brief leaves room for interpretation. In particular, hosts should validate whether booking-based “active players” matches their needs.
+
+## JSON API
+
+The dashboard reads the same API that another client, such as a mobile app, can consume. No authentication is implemented for this exercise.
+
+### `GET /api/clubs`
+
+Returns `{ "clubs": [...] }`, including each club's ID, name, time zone and creation timestamp.
+
+### `GET /api/insights`
+
+```sh
+curl 'http://localhost:3000/api/insights?clubId=club-001&from=2026-09-28&to=2026-10-04'
+```
+
+| Parameter | Meaning |
+| --- | --- |
+| `clubId` | Required club ID. |
+| `from` | Inclusive local start date, `YYYY-MM-DD`; defaults to `2026-09-07`. |
+| `to` | Inclusive local end date, `YYYY-MM-DD`; defaults to `2026-10-04`. |
+
+The response contains the club, selected and previous ranges, current and previous summaries, attendance coverage, weekly session buckets and current-period detail rows. `noShows` is `null` when no eligible session has recorded attendance; inspect `attendance.status` (`unknown`, `partial` or `complete`) before interpreting it.
+
+Invalid parameters return HTTP **400**, an unknown club returns **404**, and a database/server failure returns **500**. The API accepts valid dates from 1900 through 2100 and ranges up to 731 inclusive days; the dashboard additionally limits the end date to the snapshot date. Details are returned with the summary because the supplied fixture is small.
+
+## Data and implementation
+
+```text
+data/*.csv → scripts/seed.ts → SQLite → app/api/* → dashboard
+```
+
+| Path | Responsibility |
+| --- | --- |
+| `data/` | Supplied clubs, players, sessions and bookings CSV fixtures. |
+| `scripts/seed.ts`, `lib/database.ts`, `lib/csv.ts` | CSV import and transactional SQLite seed. |
+| `lib/dates.ts`, `lib/insights.ts` | Date boundaries, comparisons, metric aggregation and drill-down data. |
+| `app/api/` | Node.js JSON route handlers. |
+| `app/page.tsx`, `app/globals.css` | Dashboard, responsive layout and interaction. |
+| `tests/` | Data/API regression tests and Playwright browser tests. |
+
+Set `CLUB_DB_PATH` to choose a different SQLite file. The seed reads CSVs from this project's `data/` directory and replaces the four tables' rows in a transaction. The API opens the seeded database read-only. Node's built-in `node:sqlite` requires the specified Node version.
+
+## Verification
+
+```sh
+npm test               # metric, seed, date and API regression tests
+npm run lint
+npm run typecheck
+npm run build
+npx playwright install chromium
+npm run test:e2e       # desktop and mobile Chromium; starts production server
+```
+
+The browser suite requires a production build first. If using an existing Chromium-compatible browser instead of Playwright's downloaded Chromium, set `PLAYWRIGHT_CHROMIUM_PATH` to its executable before running the suite. The data tests specifically distinguish unknown attendance from a verified zero, and exercise local-week boundaries, the fixed clock, cancellation and the empty club.
+
+## Limitations and next steps
+
+- The fixture is small: detail rows are sent with each response and paginated in the browser. Larger datasets would need server-side pagination and query profiling.
+- Authentication and club-scoped authorization are deliberately absent; add both before exposing real club data.
+- Validate the active-player definition with hosts and improve attendance capture before drawing no-show trends.
+- The snapshot clock is fixed for the brief. A live deployment needs a real clock, updated data ingestion and an explicit policy for incomplete attendance.

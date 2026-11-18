@@ -41,6 +41,34 @@ test('applies a custom range and keeps incomplete attendance visible', async ({ 
   await expect(page.getByTestId('metric-no-shows')).toContainText(/partial|2\s*(?:of|\/)\s*5/i);
 });
 
+test('reapplying the current range keeps the dashboard visible without refetching', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByTestId('weekly-chart')).toBeVisible();
+  const requests: string[] = [];
+  page.on('request', request => {
+    if (request.url().includes('/api/insights?')) requests.push(request.url());
+  });
+  await page.getByTestId('range-apply').click();
+  await expect(page.getByTestId('metric-sessions-held')).toHaveAccessibleName('Sessions held: 20. View details');
+  await page.getByRole('button', { name: 'Last 4 full weeks' }).click();
+  await expect(page.getByTestId('weekly-chart')).toBeVisible();
+  expect(requests).toEqual([]);
+});
+
+test('distinguishes unknown no-shows from a recorded zero on screen', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByTestId('weekly-chart')).toBeVisible();
+  await page.getByTestId('date-from').fill('2026-09-28');
+  await page.getByTestId('date-to').fill('2026-09-28');
+  await page.getByTestId('range-apply').click();
+  await expect(page.getByTestId('metric-no-shows')).toContainText('Unknown');
+  await expect(page.getByTestId('metric-no-shows')).toHaveAccessibleName('Recorded no-shows: —. View details');
+  await page.getByTestId('date-from').fill('2026-09-10');
+  await page.getByTestId('date-to').fill('2026-09-10');
+  await page.getByTestId('range-apply').click();
+  await expect(page.getByTestId('metric-no-shows')).toHaveAccessibleName('Recorded no-shows: 0. View details');
+});
+
 test('keeps the viewport free of page-level overflow', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByTestId('weekly-chart')).toBeVisible();

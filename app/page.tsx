@@ -54,7 +54,10 @@ export default function Dashboard() {
   const apply = (next: typeof range) => {
     if (!next.from || !next.to || next.from > next.to) { setFormError('Choose a start date on or before the end date.'); return; }
     if (next.to > '2026-10-05') { setFormError('This snapshot ends on 5 October 2026. Choose an earlier date.'); return; }
-    resetRequest(); setFormError(''); setDraft(next); setRange(next);
+    if (next.from === range.from && next.to === range.to && (data || loading)) {
+      setFormError(''); setDraft(next); return;
+    }
+    resetRequest(); setFormError(''); setDraft(next); setRange({ ...next });
   };
   const reveal = (metric: Metric) => { setSelected(metric); setPage(1); requestAnimationFrame(() => detailRef.current?.focus({ preventScroll: false })); };
   const detailCount = data?.details[selected].length ?? 0;
